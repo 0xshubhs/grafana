@@ -1,0 +1,15 @@
+[package]
+name = "telemetry-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full", "sync", "time", "rt-multi-thread"] }
+tonic = "0.11"
+prost = "0.12"
+prost-types = "0.12"
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+[build-dependencies]
+tonic-build = "0.11"

@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+vendor/
+target/
+
+# Build outputs
+dist/
+build/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker volumes
+prometheus_data/
+grafana_data/
+
+# Generated protobuf
+gen/
+*.pb.go
+
+# Test coverage
+coverage/
+*.cover
+*.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp

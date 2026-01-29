@@ -1,0 +1,120 @@
+version: "3.8"
+
+# Development setup with dual-node architecture
+# Node 1: Docker containers (aggregator, prometheus, grafana)
+# Node 2: Your Mac (local agent, dashboard dev server)
+
+services:
+  # ============================================
+  # NODE 1: Docker Server (Aggregator Core)
+  # ============================================
+  aggregator:
+    build:
+      context: ./aggregator
+      dockerfile: Dockerfile
+    container_name: obs-aggregator
+    ports:
+      - "9000:9000"   # gRPC ingestion
+      - "8080:8080"   # WebSocket streaming
+      - "9100:9100"   # Prometheus metrics
+    environment:
+      - NODE_ENV=development
+      - TELEMETRY_API_KEYS=dev-key-123
+      - LOG_LEVEL=debug
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - obs-network
+    labels:
+      - "node=docker-server"
+      - "role=aggregator"
+
+  # ============================================
+  # Prometheus (Metrics Storage)
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: obs-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=24h"
+      - "--web.enable-lifecycle"
+      - "--log.level=debug"
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    networks:
+      - obs-network
+    labels:
+      - "node=docker-server"
+      - "role=metrics"
+
+  # ============================================
+  # Grafana (Dashboards & Alerts)
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.3.0
+    container_name: obs-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_LOG_LEVEL=debug
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - obs-network
+    labels:
+      - "node=docker-server"
+      - "role=visualization"
+
+  # ============================================
+  # Test Agent (Simulated Node 2 in Docker)
+  # ============================================
+  test-agent:
+    build:
+      context: ./agent/go
+      dockerfile: Dockerfile
+    container_name: obs-test-agent
+    environment:
+      - SERVICE_NAME=docker-test-service
+      - INSTANCE_ID=docker-node-1
+      - AGGREGATOR_ADDR=aggregator:9000
+      - API_KEY=dev-key-123
+      - PUSH_INTERVAL_MS=20
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - obs-network
+    labels:
+      - "node=docker-server"
+      - "role=test-agent"
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  obs-network:
+    driver: bridge

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package telemetry;
+
+option go_package = "github.com/yourorg/telemetry/gen";
+
+message MetricSample {
+  uint64 timestamp_ns = 1;
+
+  oneof value {
+    double gauge = 2;
+    uint64 counter = 3;
+    Histogram histogram = 4;
+  }
+}
+
+message Histogram {
+  repeated double bounds = 1;
+  repeated uint64 counts = 2;
+}
+
+message Metric {
+  string name = 1;
+  map<string, string> labels = 2;
+  repeated MetricSample samples = 3;
+}
+
+message TelemetryBatch {
+  string service = 1;
+  string instance = 2;
+  repeated Metric metrics = 3;
+}
+
+service TelemetryIngestor {
+  rpc StreamTelemetry(stream TelemetryBatch) returns (Ack);
+}
+
+message Ack {
+  bool ok = 1;
+}

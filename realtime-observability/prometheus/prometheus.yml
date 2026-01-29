@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 1s
+  evaluation_interval: 1s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "aggregator"
+    static_configs:
+      - targets: ["aggregator:9100"]
+    scrape_interval: 1s
+    scrape_timeout: 1s
+
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+    scrape_interval: 5s
