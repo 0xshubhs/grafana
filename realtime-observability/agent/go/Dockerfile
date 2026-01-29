@@ -1,14 +1,23 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Copy go mod files
-COPY go.mod ./
+# Copy gen module first (from parent context)
+COPY gen/ /build/gen/
+
+# Copy agent module
+COPY agent/go/go.mod /build/agent/go/
+
+WORKDIR /build/agent/go
+
+# Update replace directive for Docker build context
+RUN sed -i 's|\.\./\.\./gen|/build/gen|g' go.mod
+
 RUN go mod download
 
-# Copy source code
-COPY . .
+# Copy agent source
+COPY agent/go/ /build/agent/go/
 
 # Build the example agent
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o agent ./example
@@ -20,6 +29,6 @@ WORKDIR /app
 
 RUN apk --no-cache add ca-certificates
 
-COPY --from=builder /app/agent .
+COPY --from=builder /build/agent/go/agent .
 
 CMD ["./agent"]

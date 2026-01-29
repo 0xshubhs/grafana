@@ -16,6 +16,7 @@ import (
 	"github.com/yourorg/aggregator/internal/export"
 	"github.com/yourorg/aggregator/internal/ingest"
 	"github.com/yourorg/aggregator/internal/ws"
+	pb "github.com/yourorg/telemetry/gen/proto"
 	"google.golang.org/grpc"
 )
 
@@ -37,7 +38,7 @@ func main() {
 		grpc.StreamInterceptor(authenticator.StreamInterceptor()),
 	)
 	ingestServer := ingest.NewServer(registry, hub)
-	ingest.RegisterTelemetryIngestorServer(grpcServer, ingestServer)
+	pb.RegisterTelemetryIngestorServer(grpcServer, ingestServer)
 
 	grpcLis, err := net.Listen("tcp", ":9000")
 	if err != nil {

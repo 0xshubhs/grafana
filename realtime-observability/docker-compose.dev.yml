@@ -10,8 +10,8 @@ services:
   # ============================================
   aggregator:
     build:
-      context: ./aggregator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: aggregator/Dockerfile
     container_name: obs-aggregator
     ports:
       - "9000:9000"   # gRPC ingestion
@@ -92,8 +92,8 @@ services:
   # ============================================
   test-agent:
     build:
-      context: ./agent/go
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: agent/go/Dockerfile
     container_name: obs-test-agent
     environment:
       - SERVICE_NAME=docker-test-service

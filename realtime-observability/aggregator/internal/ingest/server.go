@@ -6,11 +6,13 @@ import (
 
 	"github.com/yourorg/aggregator/internal/buffer"
 	"github.com/yourorg/aggregator/internal/ws"
+	pb "github.com/yourorg/telemetry/gen/proto"
+	"google.golang.org/grpc"
 )
 
 // Server implements the TelemetryIngestor gRPC service
 type Server struct {
-	UnimplementedTelemetryIngestorServer
+	pb.UnimplementedTelemetryIngestorServer
 	registry *buffer.Registry
 	hub      *ws.Hub
 }
@@ -23,17 +25,20 @@ func NewServer(registry *buffer.Registry, hub *ws.Hub) *Server {
 	}
 }
 
-// StreamTelemetry handles the bidirectional streaming RPC
-func (s *Server) StreamTelemetry(stream TelemetryIngestor_StreamTelemetryServer) error {
+// StreamTelemetry handles the client streaming RPC
+func (s *Server) StreamTelemetry(stream grpc.ClientStreamingServer[pb.TelemetryBatch, pb.Ack]) error {
 	for {
 		batch, err := stream.Recv()
 		if err == io.EOF {
-			return stream.SendAndClose(&Ack{Ok: true})
+			return stream.SendAndClose(&pb.Ack{Ok: true})
 		}
 		if err != nil {
 			log.Printf("Error receiving batch: %v", err)
 			return err
 		}
+
+		log.Printf("Received batch from service=%s instance=%s metrics=%d",
+			batch.Service, batch.Instance, len(batch.Metrics))
 
 		// Process each metric in the batch
 		for _, metric := range batch.Metrics {
@@ -46,26 +51,26 @@ func (s *Server) StreamTelemetry(stream TelemetryIngestor_StreamTelemetryServer)
 }
 
 // processMetric routes metrics to appropriate ring buffers
-func (s *Server) processMetric(service, instance string, metric *Metric) {
+func (s *Server) processMetric(service, instance string, metric *pb.Metric) {
 	for _, sample := range metric.Samples {
 		ts := int64(sample.TimestampNs)
 
 		switch v := sample.Value.(type) {
-		case *MetricSample_Gauge:
+		case *pb.MetricSample_Gauge:
 			ring := s.registry.GetRing(service, metric.Name)
 			ring.Push(buffer.Sample{
 				Ts:  ts,
 				Val: v.Gauge,
 			})
 
-		case *MetricSample_Counter:
+		case *pb.MetricSample_Counter:
 			ring := s.registry.GetCounterRing(service, metric.Name)
 			ring.Push(buffer.Sample{
 				Ts:  ts,
 				Val: float64(v.Counter),
 			})
 
-		case *MetricSample_Histogram:
+		case *pb.MetricSample_Histogram:
 			ring := s.registry.GetHistogramRing(service, metric.Name)
 			ring.Push(buffer.HistogramData{
 				Ts:     ts,

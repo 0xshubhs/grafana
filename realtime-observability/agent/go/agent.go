@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	pb "github.com/yourorg/telemetry/gen/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -38,7 +39,7 @@ func DefaultConfig() Config {
 type Agent struct {
 	config Config
 	conn   *grpc.ClientConn
-	stream TelemetryIngestor_StreamTelemetryClient
+	stream grpc.ClientStreamingClient[pb.TelemetryBatch, pb.Ack]
 
 	// Metric collectors
 	gauges     map[string]*float64
@@ -121,7 +122,7 @@ func NewAgent(config Config) (*Agent, error) {
 // Connect establishes connection to the aggregator
 func (a *Agent) Connect() error {
 	var err error
-	a.conn, err = grpc.Dial(
+	a.conn, err = grpc.NewClient(
 		a.config.AggregatorAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -129,7 +130,7 @@ func (a *Agent) Connect() error {
 		return err
 	}
 
-	client := NewTelemetryIngestorClient(a.conn)
+	client := pb.NewTelemetryIngestorClient(a.conn)
 
 	// Add API key to context if configured
 	ctx := a.ctx
@@ -188,21 +189,21 @@ func (a *Agent) pushLoop() {
 }
 
 // collectMetrics gathers all current metrics into a batch
-func (a *Agent) collectMetrics() *TelemetryBatch {
+func (a *Agent) collectMetrics() *pb.TelemetryBatch {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	now := uint64(time.Now().UnixNano())
-	metrics := make([]*Metric, 0)
+	metrics := make([]*pb.Metric, 0)
 
 	// Collect gauges
 	for name, val := range a.gauges {
-		metrics = append(metrics, &Metric{
+		metrics = append(metrics, &pb.Metric{
 			Name: name,
-			Samples: []*MetricSample{
+			Samples: []*pb.MetricSample{
 				{
 					TimestampNs: now,
-					Value:       &MetricSample_Gauge{Gauge: *val},
+					Value:       &pb.MetricSample_Gauge{Gauge: *val},
 				},
 			},
 		})
@@ -210,12 +211,12 @@ func (a *Agent) collectMetrics() *TelemetryBatch {
 
 	// Collect counters
 	for name, val := range a.counters {
-		metrics = append(metrics, &Metric{
+		metrics = append(metrics, &pb.Metric{
 			Name: name,
-			Samples: []*MetricSample{
+			Samples: []*pb.MetricSample{
 				{
 					TimestampNs: now,
-					Value:       &MetricSample_Counter{Counter: *val},
+					Value:       &pb.MetricSample_Counter{Counter: *val},
 				},
 			},
 		})
@@ -224,13 +225,13 @@ func (a *Agent) collectMetrics() *TelemetryBatch {
 	// Collect histograms
 	for name, hist := range a.histograms {
 		bounds, counts := hist.Snapshot()
-		metrics = append(metrics, &Metric{
+		metrics = append(metrics, &pb.Metric{
 			Name: name,
-			Samples: []*MetricSample{
+			Samples: []*pb.MetricSample{
 				{
 					TimestampNs: now,
-					Value: &MetricSample_Histogram{
-						Histogram: &HistogramProto{
+					Value: &pb.MetricSample_Histogram{
+						Histogram: &pb.Histogram{
 							Bounds: bounds,
 							Counts: counts,
 						},
@@ -241,17 +242,17 @@ func (a *Agent) collectMetrics() *TelemetryBatch {
 	}
 
 	// Add inflight metric
-	metrics = append(metrics, &Metric{
+	metrics = append(metrics, &pb.Metric{
 		Name: "inflight",
-		Samples: []*MetricSample{
+		Samples: []*pb.MetricSample{
 			{
 				TimestampNs: now,
-				Value:       &MetricSample_Gauge{Gauge: float64(a.inflight.Load())},
+				Value:       &pb.MetricSample_Gauge{Gauge: float64(a.inflight.Load())},
 			},
 		},
 	})
 
-	return &TelemetryBatch{
+	return &pb.TelemetryBatch{
 		Service:  a.config.ServiceName,
 		Instance: a.config.InstanceID,
 		Metrics:  metrics,

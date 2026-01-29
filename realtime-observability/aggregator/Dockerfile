@@ -1,17 +1,26 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
 # Install build dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy gen module first (from parent context)
+COPY gen/ /build/gen/
+
+# Copy aggregator module
+COPY aggregator/go.mod aggregator/go.sum /build/aggregator/
+
+WORKDIR /build/aggregator
+
+# Update replace directive for Docker build context
+RUN sed -i 's|\.\./gen|/build/gen|g' go.mod
+
 RUN go mod download
 
-# Copy source code
-COPY . .
+# Copy aggregator source
+COPY aggregator/ /build/aggregator/
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o aggregator ./cmd
@@ -25,7 +34,7 @@ WORKDIR /app
 RUN apk --no-cache add ca-certificates
 
 # Copy binary from builder
-COPY --from=builder /app/aggregator .
+COPY --from=builder /build/aggregator/aggregator .
 
 # Expose ports
 # 9000 - gRPC
